@@ -13,7 +13,7 @@ you can also use it as a drawing board demo。你也可以把它当成一个画�
 
 # How to use
 
-<img src="./readme_img/2021-11-09 195445.jpg" style="zoom: 50%;" />
+<img src="./readme_img/2021-11-09 195445.gif" style="zoom: 33%;" />
 
 + 1, select images
 

@@ -9,7 +9,7 @@ you can also use it as a drawing board demo。你也可以把它当成一个画�
 
 + run command
 `python server.py`
-+ open url:http://localhost:5000/static/home.html in broswer
++ open url:http://localhost:5000/static/home.html in browser
 
 # How to use
 

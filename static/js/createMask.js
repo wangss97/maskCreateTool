@@ -112,21 +112,22 @@ class MaskCreate{
         bCanvas.height = this.iHeight;
         let bCtx = bCanvas.getContext('2d');
         bCtx.clearRect(0,0, this.iWidth, this.iHeight);
-		// 初始化opacityCanvas，opacityCanvas是bCanvas改变透明度后的结果
-		this.updateOpacityCanvas();
 		// 获得x,y,width,height区域的image，此处bCanvas是个工具人
 		bCtx.drawImage(image, x, y, this.iWidth, this.iHeight, 0,0,this.iWidth, this.iHeight)
 		this.image = new Image();
 		this.image.src = bCanvas.toDataURL('image/png');
         bCtx.clearRect(0,0, this.iWidth, this.iHeight);
+		// 初始化opacityCanvas，opacityCanvas是bCanvas改变透明度后的结果
+		this.updateOpacityCanvas();
 		// 如果有，重绘历史
 		if(maskDrawHistory){
 			this.Arrays.history = maskDrawHistory;
 			this.paintShowCanvasFromHistory();
 		}
-		// 画canvas
-        this.paintShowCanvas();
-
+		// 在图片加载好后画canvas
+		this.image.onload = (event)=>{
+			this.paintShowCanvas();
+		};
 	};
 
 
@@ -385,7 +386,6 @@ class MaskCreate{
 
     // 根据实际情况，填写自己的保存功能
     Save = (event) =>{
-		console.log(event)
         let mask = this.getMask();
 		win.saveMask(mask);
 	}

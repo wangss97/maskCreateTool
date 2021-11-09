@@ -1,0 +1,93 @@
+/* The Modal (background) */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 2; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    /* overflow: auto;  */
+    background-color: rgb(0,0,0); 
+    background-color: rgba(0, 0, 0, 0); /* Black w/ opacity */
+}
+
+/* Modal Content */
+.modal-content {
+    position: absolute;
+    background-color: #fefefe;
+    top: 120px;
+    left: 75px;
+    width: 150px;
+    font-size: 12px;
+    /* height: 200px; */
+    margin: auto;
+    border: 1px solid #888;
+    border-radius: 5px;
+    box-shadow: 0 0 5px 5px rgb(0 0 0 / 30%);
+    -webkit-animation-name: animatetop;
+    -webkit-animation-duration: 0.4s;
+    animation-name: animatetop;
+    animation-duration: 0.4s
+}
+
+/* Add Animation */
+@-webkit-keyframes animatetop {
+    from {top:140px; opacity:0} 
+    to {top: 120px;; opacity:1}
+}
+
+@keyframes animatetop {
+    from {top:140px; opacity:0}
+    to {top: 120px;; opacity:1}
+}
+
+/* The Close Button */
+.close {
+    color: white;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.close:hover,
+.close:focus {
+    color: #000;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.modal-header {
+    padding: 2px 16px;
+    background-color: #5cb85c;
+    color: white;
+}
+
+.modal-body {padding: 2px 2px;}
+
+.modal-footer {
+    padding: 2px 16px;
+    background-color: #5cb85c;
+    color: white;
+}
+
+.modal .modal-content::before {
+    content: '';
+    display: block;
+    position: absolute;
+    top: 12px;
+    left: -10px;
+    border-top: 10px solid transparent;
+    border-bottom: 10px solid transparent;
+    border-right: 10px solid #f1f1f1;
+}
+.modal .modal-content::after {
+    content: '';
+    display: block;
+    position: absolute;
+    top: 12px;
+    left: -9px;
+    border-top: 10px solid transparent;
+    border-bottom: 10px solid transparent;
+    border-right: 10px solid #fff;
+}

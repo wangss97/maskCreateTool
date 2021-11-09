@@ -1,9 +1,9 @@
 # maskCreateTool
 a tool to create label(mask) of semantic segmentation. 一个用于制作语义分割标签（掩码）的工具
 
-can only make two-category mask (background is black pixel of value 0, object is white pixel of value 255)只能制作二分类语义分割的掩码（背景是值为0的黑色像素，目标是值为1的白色像素）
+can only make two-category mask (background is black pixel of value 0, object is white pixel of value 255).  只能制作二分类语义分割的掩码（背景是值为0的黑色像素，目标是值为1的白色像素）
 
-you can also use it as a drawing board demo。你也可以把它当成一个画图板样例
+you can also use it as a drawing board demo which implement zoom, drag, and opacity.  你也可以把它当成一个实现了放缩，拖拽和改变不透明度的画图板样例
 
 # How to run
 

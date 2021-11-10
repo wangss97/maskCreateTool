@@ -92,6 +92,10 @@ class MaskCreate{
 
     // 取image的x, y, width, height部分， 取全图可设置为0,0,width,height
     SetImage = (index, image, x, y, width, height, maskDrawHistory=null) =>{
+		// 显示画图板
+		let createMaskModal = document.getElementById('createMaskModal');
+		createMaskModal.style.display='block';
+		
 		// 添加键盘事件
 		document.addEventListener('keydown', this.CanvasKeyDown);
 		// 清空上一张图的历史绘图记录
@@ -182,26 +186,30 @@ class MaskCreate{
 	};
 
 	paintShowCanvasFromHistory = () =>{
-		let _self = this;
-		let bCanvas = this.Nodes.bCanvas;
 		let bCtx = this.Nodes.bCanvas.getContext('2d');
 		
 		// 根据历史记录重画bCanvas
-		bCtx.beginPath();
-		bCtx.clearRect(0,0, this.iWidth, this.iHeight);
+		this.paintShowCanvasFromHistoryFunc(bCtx, this.Arrays.history)
 
-		this.Arrays.history.forEach(function(element){
-			if(element.contentType === 'brush'){
-				_self.drawLine(bCtx, element.content[0].x,element.content[0].y,element.content[1].x,element.content[1].y, element.lineWidth);
-			}else if (element.contentType === 'eraser'){
-				element.content.forEach((point)=>{
-					_self.eraserFunc(bCtx, point.x,point.y, element.lineWidth);
-				})
-			}
-		});
 		this.updateOpacityCanvas();
 		this.paintShowCanvas();
 	};
+
+	paintShowCanvasFromHistoryFunc = (ctx, history)=>{
+		let _self = this;
+		ctx.beginPath();
+		ctx.clearRect(0,0, this.iWidth, this.iHeight);
+
+		history.forEach(function(element){
+			if(element.contentType === 'brush'){
+				_self.drawLine(ctx, element.content[0].x,element.content[0].y,element.content[1].x,element.content[1].y, element.lineWidth);
+			}else if (element.contentType === 'eraser'){
+				element.content.forEach((point)=>{
+					_self.eraserFunc(ctx, point.x,point.y, element.lineWidth);
+				})
+			}
+		});
+	}
 
 	// 根据bCanvas上的内容，创建一个改变了opacity的canvas
 	updateOpacityCanvas = ()=>{
@@ -232,24 +240,30 @@ class MaskCreate{
 		}
 	}
     
-    getMask = ()=>{
-        let _self = this;
-        let canvas = document.createElement('canvas');
-        canvas.width = this.iWidth;
-        canvas.height = this.iHeight;
-        let ctx = canvas.getContext('2d')
-        ctx.clearRect(0,0,this.iWidth, this.iHeight);
+	getMask = ()=>{
+		let _self = this;
+		let canvas = document.createElement('canvas');
+		canvas.width = this.iWidth;
+		canvas.height = this.iHeight;
+		let ctx = canvas.getContext('2d')
+		ctx.clearRect(0,0,this.iWidth, this.iHeight);
 		ctx.fillStyle = 'black';
-        ctx.fillRect(0,0,this.iWidth, this.iHeight);
-        this.Arrays.history.forEach(
-            function(element){
-			    _self.drawLine(canvas.getContext('2d'), element.content[0].x,element.content[0].y,element.content[1].x,element.content[1].y, element.lineWidth, 1.0);
-            }
-        );
+		ctx.fillRect(0,0,this.iWidth, this.iHeight);
+		
+		this.paintShowCanvasFromHistoryFunc(ctx, this.Arrays.history)
+		
+		// 把透明像素变成黑色像素
+		let imageData = ctx.getImageData(0,0,this.iWidth, this.iHeight);
+		for(let i = 0; i<imageData.data.length; i+=4){
+			if(imageData.data[i+3]===0){
+				imageData.data[i+3] = 255;
+			}
+		}
+		ctx.putImageData(imageData, 0, 0);
 		let base64Mask = canvas.toDataURL('image/png');
 		base64Mask = base64Mask.replace('data:image/png;base64,','');
 		return base64Mask;
-    }
+	}
 
 	// 替换X坐标，保证坐标在图片内
 	XPointReplace = (x)=>{
@@ -366,7 +380,7 @@ class MaskCreate{
             this.Save();
         }
 		if (event.key === 'Escape'){
-			this.Cancle();
+			this.Cancel();
 		}
 		if (event.key === 'x'){
 			this.drawMode = this.drawMode === 'eraser' ? 'brush':'eraser';
@@ -445,7 +459,7 @@ class MaskCreate{
 		win.saveMask(mask);
 	}
 
-	Cancle = () =>{
+	Cancel = () =>{
 		let createMaskModal = document.getElementById('createMaskModal');
 		createMaskModal.style.display='none';
 		document.removeEventListener('keydown', this.CanvasKeyDown);

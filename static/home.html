@@ -34,12 +34,18 @@
 
         <div id="createMaskModalContent" style="position:absolute;font-size: 12px;border: 1px solid #888;background: white;left:50%;top:50%;border-radius: 4px;">
             <canvas id="maskCanvas" style="cursor: crosshair;" width="400" height="400"></canvas>
-            <div style="position:absolute; left:5px; top:5px;">
-                <input type="range" id="opacityChangeInput" min="0" max="100" step="1" value="100">
-            </div>
+            
+            <div id="canvasHeadTools" style="position:absolute; left:0px; top:0px; width:100%; height:30px;">
+                <div style="display:inline-block; margin:5px;">
+                    <input type="range" id="opacityChangeInput" min="0" max="100" step="1" value="100">
+                </div>
+                <div style="display:inline-block;margin:5px;font-size:20px;cursor:pointer;width:25px;text-align:center;border-radius:5px;border:1px solid #000000">
+                    <p id="brushOrEraserFlag" class="icon-pencil"></p>
+                </div>
 
-            <div id="maskAnnotationSwitch" style="position: absolute;right: 10px;top: 5px;font-size: 20px;color: rgb(180,180,180);cursor: pointer;">
-                <p class="icon-question-sign"></p>
+                <div id="maskAnnotationSwitch" style="position: absolute;margin-right:10px;margin-top:5px;right: 0px;top: 0px;font-size: 20px;color: rgb(180,180,180);cursor: pointer;">
+                    <p class="icon-question-sign"></p>
+                </div>
             </div>
             <div style="position: absolute;left: 10px;bottom: 5px;color: rgb(125 131 75);display:none" id="createMaskAnnotation">
                 <p style="color:rgb(39 143 33);">使用画笔将缺陷区域涂白以完成训练标签的制作</p>

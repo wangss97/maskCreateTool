@@ -52,6 +52,7 @@ class MaskCreate{
 		this.lineWidth = 10;
 		// 不透明度
 		this.opacity = 1.0;
+		this.drawMode = 'brush';
         this.Nodes = {
             canvas: document.getElementById('maskCanvas'),
             bCanvas: document.getElementById('maskBCanvas'),
@@ -61,6 +62,7 @@ class MaskCreate{
         this.Arrays = {
 			// 用于记录历史绘制操作的数组
             history:[],
+			eraserPoints:[]
         }
         this.Initial();
     };
@@ -73,6 +75,10 @@ class MaskCreate{
 		emt('maskAnnotationSwitch').onclick = this.showHideCreateMaskAnnotation;
 		emt('cancelBtn').onclick = win.nextImg;
 		emt('okBtn').onclick = this.Save;
+		emt('brushOrEraserFlag').onclick = (event)=>{
+			this.drawMode = this.drawMode === 'eraser' ? 'brush':'eraser';
+			emt('brushOrEraserFlag').className = emt('brushOrEraserFlag').className === 'icon-pencil'? 'icon-eraser':'icon-pencil';
+		}
 		opacityChangeInput.oninput = this.changeOpacity;
 		let createMaskModalContent = emt('createMaskModalContent');
 		createMaskModalContent.style.width = this.cWidth+'px';
@@ -131,8 +137,7 @@ class MaskCreate{
 	};
 
 
-	drawLine = (canvas, prevX, prevY, x, y, lineWidth=null) => {
-		let ctx = canvas.getContext('2d');
+	drawLine = (ctx, prevX, prevY, x, y, lineWidth=null) => {
 		ctx.beginPath();
 		ctx.globalCompositeOperation = "source-over"
 		ctx.lineWidth = lineWidth ? lineWidth : this.lineWidth;
@@ -143,15 +148,26 @@ class MaskCreate{
 		ctx.stroke();
 	}
 
-	drawCircle  = (canvas, x, y, radius) => {
-		let ctx = canvas.getContext('2d');
+	drawCircle  = (ctx, x, y, radius = null) => {
 		ctx.beginPath();
 		ctx.globalCompositeOperation = "xor";
 		ctx.strokeStyle = 'rgb(0,0,0)';
-		ctx.lineWidth = (this.lineWidth*0.95)*this.scale;
+		ctx.lineWidth = 1
+		radius = radius ?  radius : 0.5*this.lineWidth*this.scale;
 		ctx.lineCap = "butt";
 		ctx.arc(x,y, radius, 0, 2*Math.PI);
 		ctx.stroke();
+	}
+
+	eraserFunc = (ctx, x, y, lineWidth = null)=>{
+		ctx.save();
+		ctx.beginPath();
+		ctx.lineWidth = 1;
+		lineWidth = lineWidth ? this.lineWidth:lineWidth;
+		ctx.arc(x, y, 0.5*this.lineWidth, 0, 2*Math.PI);
+		ctx.clip();
+		ctx.clearRect(0,0,this.iWidth, this.iHeight);
+		ctx.restore();
 	}
 
 	// 从bCanvas上把图片绘制到展示canvas上
@@ -175,7 +191,13 @@ class MaskCreate{
 		bCtx.clearRect(0,0, this.iWidth, this.iHeight);
 
 		this.Arrays.history.forEach(function(element){
-			_self.drawLine(bCanvas, element.content[0].x,element.content[0].y,element.content[1].x,element.content[1].y, element.lineWidth);
+			if(element.contentType === 'brush'){
+				_self.drawLine(bCtx, element.content[0].x,element.content[0].y,element.content[1].x,element.content[1].y, element.lineWidth);
+			}else if (element.contentType === 'eraser'){
+				element.content.forEach((point)=>{
+					_self.eraserFunc(bCtx, point.x,point.y, element.lineWidth);
+				})
+			}
 		});
 		this.updateOpacityCanvas();
 		this.paintShowCanvas();
@@ -221,7 +243,7 @@ class MaskCreate{
         ctx.fillRect(0,0,this.iWidth, this.iHeight);
         this.Arrays.history.forEach(
             function(element){
-			    _self.drawLine(canvas, element.content[0].x,element.content[0].y,element.content[1].x,element.content[1].y, element.lineWidth, 1.0);
+			    _self.drawLine(canvas.getContext('2d'), element.content[0].x,element.content[0].y,element.content[1].x,element.content[1].y, element.lineWidth, 1.0);
             }
         );
 		let base64Mask = canvas.toDataURL('image/png');
@@ -260,9 +282,16 @@ class MaskCreate{
 		if (event.button === 0){
 			this.mousePrevX = this.XPointReplace(event.offsetX);
 			this.mousePrevY = this.YPointReplace(event.offsetY);
-			this.Nodes.canvas.removeEventListener('mousemove', this.CanvasMouseMoveCircle);
-			this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveDrawLine);
-			this.Nodes.canvas.addEventListener('mouseup', this.CanvasMouseUpDrawLine);
+			if (this.drawMode === 'brush'){
+				this.Nodes.canvas.removeEventListener('mousemove', this.CanvasMouseMoveCircle);
+				this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveDrawLine);
+				this.Nodes.canvas.addEventListener('mouseup', this.CanvasMouseUpDrawLine);
+			}else if (this.drawMode === 'eraser'){
+				this.Arrays.eraserPoints.splice(0, this.Arrays.eraserPoints.length);
+				this.Nodes.canvas.removeEventListener('mousemove', this.CanvasMouseMoveCircle);
+				this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveEraser);
+				this.Nodes.canvas.addEventListener('mouseup', this.CanvasMouseUpEraser);
+			}
 		}else if (event.button === 2){
 			this.mousePrevX = event.offsetX;
 			this.mousePrevY = event.offsetY;
@@ -275,20 +304,37 @@ class MaskCreate{
 		let x = this.XPointReplace(event.offsetX);
 		let y = this.YPointReplace(event.offsetY);
 		this.paintShowCanvas();
-		this.drawLine(this.Nodes.canvas, this.mousePrevX, this.mousePrevY, x, y, this.lineWidth*this.scale);
+		this.drawLine(this.Nodes.canvas.getContext('2d'), this.mousePrevX, this.mousePrevY, x, y, this.lineWidth*this.scale);
 	};
 
 	CanvasMouseUpDrawLine = (event) => {
 		let prePoint = this.disToOri(this.mousePrevX, this.mousePrevY);
 		let point = this.disToOri(this.XPointReplace(event.offsetX), this.YPointReplace(event.offsetY))
-		this.drawLine(this.Nodes.bCanvas, prePoint[0], prePoint[1], point[0], point[1], this.lineWidth);
+		let bCtx = this.Nodes.bCanvas.getContext('2d');
+		this.drawLine(bCtx, prePoint[0], prePoint[1], point[0], point[1], this.lineWidth);
 		this.updateOpacityCanvas();
 		this.paintShowCanvas();
-		this.RecordHistory(prePoint, point);
+		this.RecordHistory([prePoint, point]);
 		this.Nodes.canvas.removeEventListener('mousemove', this.CanvasMouseMoveDrawLine);
 		this.Nodes.canvas.removeEventListener('mouseup', this.CanvasMouseUpDrawLine);
 		this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveCircle);
 	};
+	CanvasMouseMoveEraser = (event)=>{
+		let point = this.disToOri(this.XPointReplace(event.offsetX), this.YPointReplace(event.offsetY))
+		let bCtx = this.Nodes.bCanvas.getContext('2d');
+		this.eraserFunc(bCtx, point[0], point[1]);
+		this.Arrays.eraserPoints.push(point);
+		this.updateOpacityCanvas();
+		this.paintShowCanvas();
+	}
+
+	CanvasMouseUpEraser = (event)=>{
+		this.CanvasMouseMoveEraser(event);
+		this.RecordHistory(Array.from(this.Arrays.eraserPoints));
+		this.Nodes.canvas.removeEventListener('mousemove', this.CanvasMouseMoveEraser);
+		this.Nodes.canvas.removeEventListener('mouseup', this.CanvasMouseUpEraser);
+		this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveCircle);
+	}
 
 	// 显示画笔大小的圆框
 	CanvasMouseMoveCircle = (event) => {
@@ -297,7 +343,7 @@ class MaskCreate{
 		this.hoverX = x;
 		this.hoverY = y;
 		this.paintShowCanvas();
-		this.drawCircle(this.Nodes.canvas, x, y, 1.0);
+		this.drawCircle(this.Nodes.canvas.getContext('2d'), x, y, null);
 	}
 
 	// 快捷键函数
@@ -306,12 +352,12 @@ class MaskCreate{
 		if (event.key === '['){
 			this.lineWidth = this.lineWidth > 1 ? this.lineWidth - 1: this.lineWidth;
 			this.paintShowCanvas();
-			this.drawCircle(this.Nodes.canvas, this.hoverX, this.hoverY, 1.0);
+			this.drawCircle(this.Nodes.canvas.getContext('2d'), this.hoverX, this.hoverY, null);
 		}
 		if (event.key === ']'){
 			this.lineWidth = this.lineWidth < 50 ? this.lineWidth + 1: this.lineWidth;
 			this.paintShowCanvas();
-			this.drawCircle(this.Nodes.canvas, this.hoverX, this.hoverY, 1.0);
+			this.drawCircle(this.Nodes.canvas.getContext('2d'), this.hoverX, this.hoverY, null);
 		}
 		if (event.ctrlKey && event.key==='z' ){
 			this.RollBack();
@@ -321,6 +367,10 @@ class MaskCreate{
         }
 		if (event.key === 'Escape'){
 			this.Cancle();
+		}
+		if (event.key === 'x'){
+			this.drawMode = this.drawMode === 'eraser' ? 'brush':'eraser';
+			emt('brushOrEraserFlag').className = emt('brushOrEraserFlag').className === 'icon-pencil'? 'icon-eraser':'icon-pencil';
 		}
 	}
 
@@ -354,6 +404,7 @@ class MaskCreate{
 		this.y = y - (y - this.y)/this.scale * newScale;
 		this.scale = newScale;
 		this.paintShowCanvas();
+		this.drawCircle(this.Nodes.canvas.getContext('2d'), this.hoverX, this.hoverY, null);
 	}
 
 	changeOpacity = (event) => {
@@ -369,10 +420,14 @@ class MaskCreate{
 	}
 	// ***************************************************  canvas事件结束
 
-	RecordHistory = (pointSt, pointEd) => {
+	RecordHistory = (points) => {
+		let content = []
+		points.forEach((element)=>{
+			content.push({x:element[0], y:element[1]})
+		})
 		this.Arrays.history.push({
-			contentType:'line',
-			content:[{x:pointSt[0], y:pointSt[1]},{x:pointEd[0],y:pointEd[1]}],
+			contentType: this.drawMode,
+			content: content,
 			lineWidth:this.lineWidth,
 		});
 	}

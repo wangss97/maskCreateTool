@@ -1070,3 +1070,6 @@ background   : #d4d4d4;
     border-right: 10px solid #fff;
 }
 
+.active {
+    background: rgb(200,200,200);
+}

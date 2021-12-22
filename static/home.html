@@ -35,26 +35,44 @@
         <div id="createMaskModalContent" style="position:absolute;font-size: 12px;border: 1px solid #888;background: white;left:50%;top:50%;border-radius: 4px;">
             <canvas id="maskCanvas" style="cursor: crosshair;" width="400" height="400"></canvas>
             
-            <div id="canvasHeadTools" style="position:absolute; left:0px; top:0px; width:100%; height:30px;">
-                <div style="display:inline-block; margin:5px;">
-                    <input type="range" id="opacityChangeInput" min="0" max="100" step="1" value="100">
-                </div>
-                <div style="display:inline-block;margin:5px;font-size:20px;cursor:pointer;width:25px;text-align:center;border-radius:5px;border:1px solid #000000">
-                    <p id="brushOrEraserFlag" class="icon-pencil"></p>
+            <div id="canvasHeadTools" style="position:absolute;padding-top:5px;padding-bottom:5px;font-size:16px; left:0px; top:0px; width:100%; background:rgb(202 221 231);">
+                <div>
+                    <p style="display: inline-block;margin:auto 5px;">透明度:</p>
+                    <div style="display:inline-block; margin:5px;">
+                        <input type="range" id="opacityChangeInput" min="0" max="100" step="1" value="100">
+                    </div>
+
+                    <p style="display: inline-block; margin:auto 5px">画笔大小:</p>
+                    <div style="display:inline-block; margin:5px;">
+                        <input type="range" id="brushSizeChangeInput" min="0" max="100" step="1" value="100">
+                    </div>
+
+                    <div title="切换画笔和橡皮擦" class="active" style="display:inline-block;margin:auto 5px;font-size:20px;cursor:pointer;width:25px;border-radius:5px;border:1px solid #000000;text-align:center;">
+                        <p id="brushOrEraserFlag" class="icon-pencil"></p>
+                    </div>
+                    <div title="进入改变缺陷缺陷类型模式" style="display:inline-block;margin:auto 5px;font-size:20px;cursor:pointer;width:25px;border-radius:5px;border:1px solid #000000;text-align:center;">
+                        <p id="drawOrGrabFlag" class="icon-hand-up"></p>
+                    </div>
+
+                    <div title="显示帮助" id="maskAnnotationSwitch" style="position: absolute;margin-right:10px;margin-top:5px;right: 0px;top: 0px;font-size: 20px;color: rgb(180,180,180);cursor: pointer;">
+                        <p class="icon-question-sign"></p>
+                    </div>
                 </div>
 
-                <div id="maskAnnotationSwitch" style="position: absolute;margin-right:10px;margin-top:5px;right: 0px;top: 0px;font-size: 20px;color: rgb(180,180,180);cursor: pointer;">
-                    <p class="icon-question-sign"></p>
+            </div>
+            <div id="canvasSideTools" style="position:absolute;top: 0px;width:10%;left:-10%;height: 100%;background: #2d7ca7;">
+                <div id="typeButtonContainer" style="margin: 5px;padding:5px;background:white;text-align:center;">
                 </div>
             </div>
             <div style="position: absolute;left: 10px;bottom: 5px;color: rgb(125 131 75);display:none" id="createMaskAnnotation">
-                <p style="color:rgb(39 143 33);">使用画笔将缺陷区域涂白以完成训练标签的制作</p>
+                <p style="color:rgb(39 143 33);">使用画笔将缺陷区域涂色以完成训练标签的制作</p>
                 <p>缩小画笔: [</p>
                 <p>放大画笔: ]</p>
-                <p>切换橡皮擦和画笔: x</p>
+                <p>切换画笔和橡皮擦: x</p>
                 <p>拖拽: 按住鼠标右键</p>
                 <p>放缩图片: 鼠标滚轮</p>
                 <p>撤销: Ctrl+z</p>
+                <p>恢复撤销：Ctrl+Shift+z</p>
                 <p>确定：Enter  取消：Esc</p>
             </div>
             <div style="position:absolute;right:5px;bottom:5px;">
@@ -69,6 +87,7 @@
     
 </div>
 
+<script async src="./js/opencv.js"></script>
 <script src="./js/createMask.js"></script>
 <script src="./js/operate.js"></script>
 </body>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>   
+<html>   
+<head>   
+<meta charset="UTF-8">   
+<title>制作合成数据集掩码</title>   
+</head>   
+<body>   
+<div id="augmentBody">
+    <input type="text" id="lineWidthMin" placeholder="最小线宽">
+    <input type="text" id="lineWidthMax" placeholder="最大线宽">
+    <input type="text" id="lineLengthMin" placeholder="最小线长">
+    <input type="text" id="lineLengthMax" placeholder="最大线长">
+    <input type="text" id="angleMin" placeholder="最小偏角">
+    <input type="text" id="angleMax" placeholder="最大偏角">
+    <input type="text" id="maskNum" placeholder="生成数量">
+
+
+</div>
+
+<canvas id="myCanvas" width="400px" height="300px" style="border: 1px solid red;">   
+您的浏览器不支持canvas标签。   
+</canvas>   
+<button id='btn'>生成掩码</button>
+  
+<script type="text/javascript" src='./js/maskGenerate.js'> 
+</script>  
+</body>   
+</html>  

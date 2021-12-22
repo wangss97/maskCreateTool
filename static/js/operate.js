@@ -44,7 +44,6 @@ class mainWin{
         })
         this.files = filesCopy;
 
-
         this.index = -1;
         this.nextImg();
         emt('totalNum').innerText = this.files.length;

@@ -50,6 +50,10 @@ class MaskCreate{
 		this.minScale = 0.1;
 		// 绘制线宽
 		this.lineWidth = 10;
+		this.minLineWidth = 1;
+		this.maxLineWidth = 50;
+		this.color = 'rgb(255,255,255)';
+		this.defaultColor = 'rgb(255,255,255)';
 		// 不透明度
 		this.opacity = 1.0;
 		this.drawMode = 'brush';
@@ -58,28 +62,67 @@ class MaskCreate{
             bCanvas: document.getElementById('maskBCanvas'),
 			opacityCanvas:null,
 			opacityChangeInput: emt("opacityChangeInput"),
+			brushSizeChangeInput: emt("brushSizeChangeInput"),
+			typeButtons: null
 		}
         this.Arrays = {
 			// 用于记录历史绘制操作的数组
             history:[],
-			eraserPoints:[]
+			eraserPoints:[],
+			defectType:[],
+			colorTransTable:{}
         }
+		// 用于记录history的栈顶指针
+		this.historyPointer = 0
+		// 类型颜色转换表
+		this.colorTransTable = null;
+		// 一幅黑白图片，其中白色区域为选定的缺陷区域，可以用于选中缺陷轮廓线的绘制，以及选中缺陷区域的类型转换
+		this.contourMask = null;
+		// 缺陷类型转换时，前一个类型
+		this.preDefectType = null;
         this.Initial();
     };
 
     Initial = ()=>{
-		this.Nodes.canvas.addEventListener('mousedown', this.CanvasMouseDown);
-		this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveCircle);
-		this.Nodes.canvas.addEventListener('contextmenu', this.preventContextMenu);
-		this.Nodes.canvas.addEventListener('wheel', this.CanvasWheel);
+		this.addEvent(this.Nodes.canvas, 'mousedown', this.CanvasMouseDown);
+		this.addEvent(this.Nodes.canvas, 'mousemove', this.CanvasMouseMoveCircle);
+		this.addEvent(this.Nodes.canvas, 'contextmenu', this.preventContextMenu);
+		this.addEvent(this.Nodes.canvas, 'wheel', this.CanvasWheel);
+
 		emt('maskAnnotationSwitch').onclick = this.showHideCreateMaskAnnotation;
 		emt('cancelBtn').onclick = win.nextImg;
 		emt('okBtn').onclick = this.Save;
 		emt('brushOrEraserFlag').onclick = (event)=>{
-			this.drawMode = this.drawMode === 'eraser' ? 'brush':'eraser';
-			emt('brushOrEraserFlag').className = emt('brushOrEraserFlag').className === 'icon-pencil'? 'icon-eraser':'icon-pencil';
+			let parent = emt("brushOrEraserFlag").parentNode
+			if (parent.className != "active"){
+				emt('drawOrGrabFlag').parentNode.className = "";
+				parent.className = "active";
+
+				this.Nodes.canvas.style.cursor = "crosshair";
+				this.resotreEvent(this.Nodes.canvas);
+				this.contourMask = null;
+
+			}else{
+				this.drawMode = this.drawMode === 'eraser' ? 'brush':'eraser';
+				emt('brushOrEraserFlag').className = emt('brushOrEraserFlag').className === 'icon-pencil'? 'icon-eraser':'icon-pencil';
+				parent.className = "active";
+			}
+			
+		}
+		emt("drawOrGrabFlag").onclick = (event)=>{
+			let parent = emt('drawOrGrabFlag').parentNode;
+			if(parent.className != "active"){
+				parent.className = "active";
+				emt("brushOrEraserFlag").parentNode.className = "";
+
+				this.Nodes.canvas.style.cursor = "default";
+				this.saveAndClearEvent(this.Nodes.canvas);
+				this.addEvent(this.Nodes.canvas,"mousedown",this.CanvasMouseDownGrab);
+			}
+
 		}
 		opacityChangeInput.oninput = this.changeOpacity;
+		brushSizeChangeInput.oninput = this.changeBrushSize;
 		let createMaskModalContent = emt('createMaskModalContent');
 		createMaskModalContent.style.width = this.cWidth+'px';
 		createMaskModalContent.style.height = this.cHeight+'px';
@@ -88,6 +131,8 @@ class MaskCreate{
 		let canvas = this.Nodes.canvas;
 		canvas.width = this.cWidth;
 		canvas.height = this.cHeight;
+
+		this.createTypeButton();
  	};
 
     // 取image的x, y, width, height部分， 取全图可设置为0,0,width,height
@@ -141,21 +186,21 @@ class MaskCreate{
 	};
 
 
-	drawLine = (ctx, prevX, prevY, x, y, lineWidth=null) => {
+	drawLine = (ctx, prevX, prevY, x, y, lineWidth=null, color=null) => {
 		ctx.beginPath();
 		ctx.globalCompositeOperation = "source-over"
 		ctx.lineWidth = lineWidth ? lineWidth : this.lineWidth;
 		ctx.lineCap = "round";
-		ctx.strokeStyle = 'rgba(255,255,255,1.0)';
+		ctx.strokeStyle = color ? color : this.color;
 		ctx.moveTo(prevX, prevY);
 		ctx.lineTo(x, y);
 		ctx.stroke();
 	}
 
-	drawCircle  = (ctx, x, y, radius = null) => {
+	drawCircle  = (ctx, x, y, radius = null, color=null) => {
 		ctx.beginPath();
-		ctx.globalCompositeOperation = "xor";
-		ctx.strokeStyle = 'rgb(0,0,0)';
+		// ctx.globalCompositeOperation = "xor";
+		ctx.strokeStyle = color ? color:this.color;
 		ctx.lineWidth = 1
 		radius = radius ?  radius : 0.5*this.lineWidth*this.scale;
 		ctx.lineCap = "butt";
@@ -173,6 +218,92 @@ class MaskCreate{
 		ctx.clearRect(0,0,this.iWidth, this.iHeight);
 		ctx.restore();
 	}
+
+	// 获得与给定像素值最接近的缺陷类型像素值
+	// 绘画时，画笔边沿的像素会被平滑成不是画笔像素值
+	getNearestColor = (r,g,b)=>{
+	
+		let minDistance = 100000;
+		let color = null
+		for (let key in this.colorTransTable){
+			let distance = Math.sqrt(Math.pow(r-this.colorTransTable[key].R,2)+Math.pow(g-this.colorTransTable[key].G,2)+Math.pow(b-this.colorTransTable[key].B,2));
+			if (distance < minDistance){
+				minDistance = distance;
+				color = [this.colorTransTable[key].R,this.colorTransTable[key].G,this.colorTransTable[key].B]
+			}
+		}
+		return color
+	}
+
+	createTypeButton = ()=>{
+		let self = this;
+		ajax("post", "/download/colorTransTable", false, "", (xhttp)=>{
+			let colorTransTable = JSON.parse(xhttp.responseText)
+			this.colorTransTable = colorTransTable
+			let typeButtonContainer = emt("typeButtonContainer");
+
+			for(let key in colorTransTable){
+				this.Arrays.defectType.push(key);
+				this.Arrays.colorTransTable[key] = 'rgb('+colorTransTable[key].R+','+colorTransTable[key].G+','+colorTransTable[key].B+')';
+			}
+
+			this.Arrays.defectType.forEach((element, idx)=>{
+				let button = document.createElement("button");
+				button.textContent = element;
+				button.style.border = "1px solid"
+				button.style.margin = "5px auto";
+				button.style.display = "block";
+				button.style.width = "80%";
+	
+				button.style.color = this.Arrays.colorTransTable[element];
+				typeButtonContainer.appendChild(button);
+			})
+
+			let buttons = typeButtonContainer.querySelectorAll('button');
+			buttons.forEach((element, idx)=>{
+				element.onclick = ()=>{
+					self.color = self.Arrays.colorTransTable[element.innerText];
+					buttons.forEach((_element)=>{
+						_element.style.background='rgb(239,239,239)';
+						_element.style.color = self.Arrays.colorTransTable[_element.innerText];
+					})
+					element.style.background = self.Arrays.colorTransTable[element.innerText];
+					element.style.color = 'black';
+
+					// 缺陷类型转换
+					if (self.contourMask != null){
+						let defectType = element.innerText
+						// 转换类型相同时，什么都不做
+						if(self.preDefectType == defectType){
+							return
+						}
+						// 1，修改bCanvas上的缺陷类型
+						let bCtx = self.Nodes.bCanvas.getContext('2d')
+						self.changeDefectType(bCtx, self.contourMask, colorTransTable[defectType].R,colorTransTable[defectType].G,colorTransTable[defectType].B)
+						self.updateOpacityCanvas()
+						
+						// 2，修改展示canvas上的缺陷类型
+						self.paintShowCanvas()
+						self.paintDefectContour()
+
+						// 记录历史
+						this.RecordHistory(
+							{
+								"contentType":"colorChange",
+								"srcColor":self.colorTransTable[self.preDefectType],
+								"dstColor":self.colorTransTable[defectType],
+								"dstColorR":colorTransTable[defectType].R,
+								"dstColorG":colorTransTable[defectType].G,
+								"dstColorB":colorTransTable[defectType].B,
+								"area":new cv.Mat(this.contourMask)
+							}
+						)
+					}
+				}
+			})
+		})
+	}
+
 
 	// 从bCanvas上把图片绘制到展示canvas上
 	paintShowCanvas = ()=>{
@@ -200,13 +331,18 @@ class MaskCreate{
 		ctx.beginPath();
 		ctx.clearRect(0,0, this.iWidth, this.iHeight);
 
-		history.forEach(function(element){
+		history.forEach((element,idx)=>{
+			if(idx >= this.historyPointer){
+				return
+			}
 			if(element.contentType === 'brush'){
-				_self.drawLine(ctx, element.content[0].x,element.content[0].y,element.content[1].x,element.content[1].y, element.lineWidth);
+				_self.drawLine(ctx, element.content[0].x,element.content[0].y,element.content[1].x,element.content[1].y, element.lineWidth,element.color);
 			}else if (element.contentType === 'eraser'){
 				element.content.forEach((point)=>{
 					_self.eraserFunc(ctx, point.x,point.y, element.lineWidth);
 				})
+			}else if (element.contentType === 'colorChange'){
+				_self.changeDefectType(ctx, element.area, element.dstColorR,element.dstColorG,element.dstColorB)
 			}
 		});
 	}
@@ -239,6 +375,42 @@ class MaskCreate{
 			imageData.data[i+3] = imageData.data[i+3]*this.opacity;
 		}
 	}
+
+	changeDefectType = (ctx, contourMask, dstR, dstG, dstB)=>{
+		let self = this
+		let imageData = ctx.getImageData(0,0,self.iWidth, self.iHeight)
+
+		for (let i = 0; i<imageData.height; i++){
+			for (let j = 0; j<imageData.width; j++){
+				if(contourMask.data[i*contourMask.cols*contourMask.channels()+j*contourMask.channels()] == 255){
+					// console.log(colorTransTable[element.innerText].R,colorTransTable[element.innerText].G,colorTransTable[element.innerText].B)
+					imageData.data[i*imageData.width*4 + j*4] = dstR;
+					imageData.data[i*imageData.width*4 + j*4+1] = dstG;
+					imageData.data[i*imageData.width*4 + j*4+2] = dstB;
+					imageData.data[i*imageData.width*4 + j*4+3] = 255;
+				}
+			}
+		}
+		ctx.putImageData(imageData,0,0)
+	}
+
+	paintDefectContour = ()=>{
+		let contours = new cv.MatVector()
+		let hierarchy = new cv.Mat()
+		cv.findContours(this.contourMask, contours, hierarchy, cv.RETR_TREE,cv.CHAIN_APPROX_NONE)
+		this.paintShowCanvas()
+		for(let cntIdx = 0; cntIdx<contours.size(); cntIdx++){
+			let contour = contours.get(cntIdx)
+			for(let i = 0; i<contour.rows;i++){
+				this.drawCircle(this.Nodes.canvas.getContext('2d'),
+					this.oriXToDisX(contour.data32S[i*contour.cols*contour.channels() + 0*contour.channels()]),
+					this.oriYToDisY(contour.data32S[i*contour.cols*contour.channels() + 0*contour.channels()+1]),
+					1,
+					"rgb(255,255,0)"
+				)
+			}
+		}
+	}
     
 	getMask = ()=>{
 		let _self = this;
@@ -250,13 +422,35 @@ class MaskCreate{
 		ctx.fillStyle = 'black';
 		ctx.fillRect(0,0,this.iWidth, this.iHeight);
 		
-		this.paintShowCanvasFromHistoryFunc(ctx, this.Arrays.history)
+		// this.paintShowCanvasFromHistoryFunc(ctx, this.Arrays.history)
 		
+		let imageData = this.Nodes.bCanvas.getContext('2d').getImageData(0,0,this.iWidth, this.iHeight);
 		// 把透明像素变成黑色像素
-		let imageData = ctx.getImageData(0,0,this.iWidth, this.iHeight);
 		for(let i = 0; i<imageData.data.length; i+=4){
 			if(imageData.data[i+3]===0){
 				imageData.data[i+3] = 255;
+			}
+		}
+		let unique = {}
+		let height = imageData.height
+		let width = imageData.width
+		for(let i = 0;i<height; i++){
+			for(let j = 0;j<width; j++){
+				let r = imageData.data[i*width*4 + j*4]
+				let g = imageData.data[i*width*4 + j*4 +1]
+				let b = imageData.data[i*width*4 + j*4 +2]
+				// 背景像素不处理
+				if(r==0 && g==0 && b==0){
+					continue
+				}
+				if (!unique[r+','+g+','+b]){
+					let nearestColor = this.getNearestColor(r,g,b)
+					unique[r+','+g+','+b] = nearestColor
+				}
+				// 边沿像素变成非平滑后的
+				imageData.data[i*width*4 + j*4] = unique[r+','+g+','+b][0]
+				imageData.data[i*width*4 + j*4 +1] = unique[r+','+g+','+b][1]
+				imageData.data[i*width*4 + j*4 +2] = unique[r+','+g+','+b][2]
 			}
 		}
 		ctx.putImageData(imageData, 0, 0);
@@ -290,29 +484,127 @@ class MaskCreate{
 		let oriY = (y - this.y)/this.scale;
 		return [oriX, oriY];
 	}
-
+	// 原始坐标到显示坐标的转换
+	oriXToDisX = (x) => {
+		let disX = x*this.scale + this.x
+		return disX;
+	}
+	oriYToDisY = (y) => {
+		let disY = y*this.scale + this.y
+		return disY;
+	}
 	// ***************************************************  canvas事件开始
 	CanvasMouseDown = (event)=>{
 		if (event.button === 0){
 			this.mousePrevX = this.XPointReplace(event.offsetX);
 			this.mousePrevY = this.YPointReplace(event.offsetY);
 			if (this.drawMode === 'brush'){
-				this.Nodes.canvas.removeEventListener('mousemove', this.CanvasMouseMoveCircle);
-				this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveDrawLine);
-				this.Nodes.canvas.addEventListener('mouseup', this.CanvasMouseUpDrawLine);
+				this.removeEvent(this.Nodes.canvas,'mousemove', this.CanvasMouseMoveCircle);
+				this.addEvent(this.Nodes.canvas,'mousemove', this.CanvasMouseMoveDrawLine);
+				this.addEvent(this.Nodes.canvas,'mouseup', this.CanvasMouseUpDrawLine);
 			}else if (this.drawMode === 'eraser'){
 				this.Arrays.eraserPoints.splice(0, this.Arrays.eraserPoints.length);
-				this.Nodes.canvas.removeEventListener('mousemove', this.CanvasMouseMoveCircle);
-				this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveEraser);
-				this.Nodes.canvas.addEventListener('mouseup', this.CanvasMouseUpEraser);
+				this.removeEvent(this.Nodes.canvas,'mousemove', this.CanvasMouseMoveCircle);
+				this.addEvent(this.Nodes.canvas,'mousemove', this.CanvasMouseMoveEraser);
+				this.addEvent(this.Nodes.canvas,'mouseup', this.CanvasMouseUpEraser);
 			}
 		}else if (event.button === 2){
 			this.mousePrevX = event.offsetX;
 			this.mousePrevY = event.offsetY;
-			this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveDrag);
-			this.Nodes.canvas.addEventListener('mouseup', this.CanvasMouseUpDrag);
+			this.addEvent(this.Nodes.canvas,'mousemove', this.CanvasMouseMoveDrag);
+			this.addEvent(this.Nodes.canvas,'mouseup', this.CanvasMouseUpDrag);
 		}
 	};
+
+	CanvasMouseDownGrab = (event)=>{
+		if (event.button === 0){
+			let point = this.disToOri(this.XPointReplace(event.offsetX),this.YPointReplace(event.offsetY))
+			point = [parseInt(point[0]),parseInt(point[1])]
+			let image = cv.imread(this.Nodes.bCanvas)
+			let r = this.getPixel(image, point[1],point[0],0)
+			let g = this.getPixel(image, point[1],point[0],1)
+			let b = this.getPixel(image, point[1],point[0],2)
+			// 如果点击到了背景，直接结束
+			if (r==0 && g==0 && b==0){
+				return
+			}
+			let selectColor = this.getNearestColor(r,g,b)
+
+			let unique = {}
+			// 做二值化，选中的像素颜色是白色，其它所有像素是黑色
+			for(let i =0; i< image.rows; i++){
+				for (let j = 0; j<image.cols;j++){
+					let r = this.getPixel(image, i,j,0)
+					let g = this.getPixel(image, i,j,1)
+					let b = this.getPixel(image, i,j,2)
+					let color;
+					if(unique[r+','+g+','+b]){
+						color = unique[r+','+g+','+b]
+					}else{
+						color = this.getNearestColor(r,g,b)
+						unique[r+','+g+','+b] = color
+					}
+					if(color[0]==selectColor[0] && color[1]==selectColor[1] && color[2]==selectColor[2]){
+						this.setPixel(image, i, j, 255, 0)
+						this.setPixel(image, i, j, 255, 1)
+						this.setPixel(image, i, j, 255, 2)
+					}else{
+						this.setPixel(image, i, j, 0, 0)
+						this.setPixel(image, i, j, 0, 1)
+						this.setPixel(image, i, j, 0, 2)
+					}
+				}
+			}
+			cv.cvtColor(image, image, cv.COLOR_RGB2GRAY);
+
+			// 求联通区域，点击位置在的联通区域为白色，其它所有地方为黑色，做二值化
+			let labels = new cv.Mat()
+			let cnt = cv.connectedComponents(image,labels)
+
+			let componentId = labels.data32S[point[1]*labels.cols*labels.channels() + point[0]*labels.channels()]
+			for(let i =0; i< labels.rows; i++){
+				for (let j = 0; j<labels.cols;j++){
+					if(labels.data32S[i*labels.cols*labels.channels() + j*labels.channels()] === componentId){
+						this.setPixel(image, i, j, 255)
+					}else{
+						this.setPixel(image, i, j, 0)
+					}
+				}
+			}
+			this.contourMask = image
+
+			// 获得轮廓
+			// 画轮廓
+			this.paintDefectContour()
+
+			// 修改选中的typeButton
+			let defectType = null
+			for (let key in this.Arrays.colorTransTable){
+				if(this.Arrays.colorTransTable[key] == "rgb("+selectColor[0]+","+selectColor[1]+","+selectColor[2]+")"){
+					defectType = key
+					break
+				}
+			}
+
+			let typeButtonContainer = emt("typeButtonContainer")
+			let buttons = typeButtonContainer.querySelectorAll('button')
+			buttons.forEach((element, idx)=>{
+				// console.log(element)
+				if(element.innerText == defectType){
+					this.preDefectType = defectType
+					element.onclick()
+				}
+			})
+
+		}
+	}
+
+	getPixel = (obj,i,j,channel = 0)=>{
+		return obj.data[i*obj.cols*obj.channels() + j*obj.channels()+channel]
+	}
+	setPixel = (obj,i,j,value,channel=0)=>{
+		obj.data[i*obj.cols*obj.channels() + j*obj.channels()+channel] = value
+	}
 
 	CanvasMouseMoveDrawLine = (event) => {
 		let x = this.XPointReplace(event.offsetX);
@@ -328,11 +620,12 @@ class MaskCreate{
 		this.drawLine(bCtx, prePoint[0], prePoint[1], point[0], point[1], this.lineWidth);
 		this.updateOpacityCanvas();
 		this.paintShowCanvas();
-		this.RecordHistory([prePoint, point]);
-		this.Nodes.canvas.removeEventListener('mousemove', this.CanvasMouseMoveDrawLine);
-		this.Nodes.canvas.removeEventListener('mouseup', this.CanvasMouseUpDrawLine);
-		this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveCircle);
+		this.RecordHistory(this.constructHistoryRecordDraw([prePoint, point]));
+		this.removeEvent(this.Nodes.canvas,'mousemove', this.CanvasMouseMoveDrawLine);
+		this.removeEvent(this.Nodes.canvas,'mouseup', this.CanvasMouseUpDrawLine);
+		this.addEvent(this.Nodes.canvas, 'mousemove', this.CanvasMouseMoveCircle);
 	};
+	
 	CanvasMouseMoveEraser = (event)=>{
 		let point = this.disToOri(this.XPointReplace(event.offsetX), this.YPointReplace(event.offsetY))
 		let bCtx = this.Nodes.bCanvas.getContext('2d');
@@ -344,10 +637,10 @@ class MaskCreate{
 
 	CanvasMouseUpEraser = (event)=>{
 		this.CanvasMouseMoveEraser(event);
-		this.RecordHistory(Array.from(this.Arrays.eraserPoints));
-		this.Nodes.canvas.removeEventListener('mousemove', this.CanvasMouseMoveEraser);
-		this.Nodes.canvas.removeEventListener('mouseup', this.CanvasMouseUpEraser);
-		this.Nodes.canvas.addEventListener('mousemove', this.CanvasMouseMoveCircle);
+		this.RecordHistory(this.constructHistoryRecordDraw(Array.from(this.Arrays.eraserPoints)));
+		this.removeEvent(this.Nodes.canvas,'mousemove', this.CanvasMouseMoveEraser);
+		this.removeEvent(this.Nodes.canvas,'mouseup', this.CanvasMouseUpEraser);
+		this.addEvent(this.Nodes.canvas,'mousemove', this.CanvasMouseMoveCircle);
 	}
 
 	// 显示画笔大小的圆框
@@ -362,19 +655,24 @@ class MaskCreate{
 
 	// 快捷键函数
 	CanvasKeyDown = (event) => {
-		console.log(event.key);
+
 		if (event.key === '['){
-			this.lineWidth = this.lineWidth > 1 ? this.lineWidth - 1: this.lineWidth;
+			this.lineWidth = this.lineWidth > this.minLineWidth ? this.lineWidth - 1: this.lineWidth;
+			this.Nodes.brushSizeChangeInput.value = (this.lineWidth-this.minLineWidth)/(this.maxLineWidth - this.minLineWidth) * 100;
 			this.paintShowCanvas();
 			this.drawCircle(this.Nodes.canvas.getContext('2d'), this.hoverX, this.hoverY, null);
 		}
 		if (event.key === ']'){
-			this.lineWidth = this.lineWidth < 50 ? this.lineWidth + 1: this.lineWidth;
+			this.lineWidth = this.lineWidth < this.maxLineWidth ? this.lineWidth + 1: this.lineWidth;
+			this.Nodes.brushSizeChangeInput.value = (this.lineWidth-this.minLineWidth)/(this.maxLineWidth - this.minLineWidth) * 100;
 			this.paintShowCanvas();
 			this.drawCircle(this.Nodes.canvas.getContext('2d'), this.hoverX, this.hoverY, null);
 		}
-		if (event.ctrlKey && event.key==='z' ){
+		if (event.ctrlKey && event.key==='z' &&(!event.shiftKey) ){
 			this.RollBack();
+		}
+		if (event.ctrlKey && event.shiftKey && event.key==='Z' ){
+			this.Forward();
 		}
         if (event.key === 'Enter'){
             this.Save();
@@ -403,8 +701,8 @@ class MaskCreate{
 		this.paintShowCanvas();
 	}
 	CanvasMouseUpDrag = (event) =>{
-		this.Nodes.canvas.removeEventListener('mousemove', this.CanvasMouseMoveDrag);
-		this.Nodes.canvas.removeEventListener('mouseup', this.CanvasMouseUpDrag);
+		this.removeEvent(this.Nodes.canvas,'mousemove', this.CanvasMouseMoveDrag);
+		this.removeEvent(this.Nodes.canvas,'mouseup', this.CanvasMouseUpDrag);
 	}
 
 	// 滚轮放缩
@@ -427,6 +725,13 @@ class MaskCreate{
 		this.paintShowCanvas();
 	}
 
+	changeBrushSize = (event) =>{
+		this.lineWidth = event.target.value/100.0 * (this.maxLineWidth - this.minLineWidth)+this.minLineWidth;
+		this.lineWidth = parseInt(this.lineWidth);
+		this.paintShowCanvas();
+		this.drawCircle(this.Nodes.canvas.getContext('2d'), this.hoverX, this.hoverY, null);
+	}
+
 	showHideCreateMaskAnnotation = (event)=>{
 		let ano = emt("createMaskAnnotation");
 		if (ano.style.display=='none'){ano.style.display='block';}
@@ -434,22 +739,42 @@ class MaskCreate{
 	}
 	// ***************************************************  canvas事件结束
 
-	RecordHistory = (points) => {
+	constructHistoryRecordDraw = (points) =>{
 		let content = []
 		points.forEach((element)=>{
 			content.push({x:element[0], y:element[1]})
 		})
-		this.Arrays.history.push({
+		let record = {
 			contentType: this.drawMode,
 			content: content,
 			lineWidth:this.lineWidth,
-		});
+			color:this.color
+		}
+		return record
+	}
+
+	RecordHistory = (record) => {
+		if(this.Arrays.history.length == this.historyPointer){
+			this.Arrays.history.push(record)
+		}else{
+			this.Arrays.history[this.historyPointer] = record;
+			this.Arrays.history.splice(this.historyPointer+1)
+		}
+		this.historyPointer++;
 	}
 
 	RollBack = () => {
-		if (this.Arrays.history.length == 0){return;}
-		this.Arrays.history.pop();
+		if (this.historyPointer == 0){return;}
+		this.historyPointer--;
 		this.paintShowCanvasFromHistory();
+
+		console.log(this.historyPointer, this.Arrays.history)
+	}
+
+	Forward = ()=>{
+		if (this.historyPointer == this.Arrays.history.length){return}
+		this.historyPointer++;
+		this.paintShowCanvasFromHistory()
 	}
 
 
@@ -469,6 +794,85 @@ class MaskCreate{
 	preventContextMenu = (event)=>{
 		event.preventDefault();
 	}
+
+
+	// ----------------------自定义事件管理，用于获取所有注册在元素上的事件-------------------------
+
+	// 清空当前对象的所有绑定事件
+	saveAndClearEvent = (obj)=>{
+		let eventList = obj.eventList;
+		if(eventList){
+			obj.oldEventList = Object.assign({}, obj.eventList);
+
+			for (let key in eventList){
+				let eventListType = eventList[key];
+				for (let i = 0; i < eventListType.length; i++){
+					obj.removeEventListener(key, eventListType[i].callback);
+				}
+			}
+			obj.eventList = {};
+		}
+	}
+
+	// 恢复当前对象的所有绑定事件（asveAndClearEvent清空的事件）
+	resotreEvent= (obj)=>{
+		if(obj.eventList){
+			for (let key in obj.eventList){
+				let eventListType = obj.eventList[key];
+				for (let i = 0; i < eventListType.length; i++){
+					obj.removeEventListener(key,eventListType[i].callback);
+				}
+			}
+		}
+		if(obj.oldEventList){
+			obj.eventList = Object.assign({}, obj.oldEventList);
+			for (let key in obj.eventList){
+				let eventListType = obj.eventList[key];
+				for (let i = 0; i < eventListType.length; i++){
+					obj.addEventListener(key,eventListType[i].callback);
+				}
+			}
+		}
+		
+	}
+
+	addEvent= (obj, type, callback, useCapture)=>{
+		obj.addEventListener(type, callback, useCapture);
+		this._addEvent(obj, type, callback, useCapture);
+	}
+
+	removeEvent = (obj, type, callback, useCapture) =>{
+		obj.removeEventListener(type, callback, useCapture);
+		this._removeEvent(obj, type, callback, useCapture);
+	}
+
+	_addEvent = (obj, type, callback, useCapture) =>{
+		if (obj.eventList) {
+			if (obj.eventList[type]) {
+				obj.eventList[type].push({ callback: callback, useCapture: useCapture });
+			} else {
+				obj.eventList[type] = [{ callback: callback, useCapture: useCapture }];
+			}
+		} else {
+			obj.eventList = {};
+			obj.eventList[type] = [{ callback: callback, useCapture: useCapture }];
+		}
+	}
+
+	_removeEvent = (obj, type, callback, useCapture)=>{
+		var eventList=obj.eventList;
+		if (eventList) {
+			if (eventList[type]) {            
+				for (var i = 0; i < eventList[type].length; i++) {
+					if (eventList[type][i].callback===callback) {
+						eventList[type].splice(i, 1);
+						if (eventList[type].length===0) {
+							delete eventList[type];
+						}
+						break;
+					}
+				}
+			} 
+		} 
+	}
 }
-
-
